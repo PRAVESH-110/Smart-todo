@@ -1,120 +1,90 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getTodos, addTodo, toggleTodo, deleteTodo, type Todo } from './services/api'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [newTodo, setNewTodo] = useState('')
+
+  // queryClient lets us interact with the cache (e.g. invalidate data)
+  const queryClient = useQueryClient()
+
+  // 1. Fetch Todos (useQuery)
+  const { data: todos, isLoading, isError } = useQuery({
+    queryKey: ['todos'], // This is the unique key for this piece of data
+    queryFn: getTodos
+  })
+
+  // 2. Add Todo (useMutation)
+  const addTodoMutation = useMutation({
+    mutationFn: addTodo,
+    // When mutation succeeds, invalidate 'todos' so it automatically refetches
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+      setNewTodo('') // Clear the input
+    }
+  })
+
+  // 3. Toggle Todo Status
+  const toggleTodoMutation = useMutation({
+    mutationFn: toggleTodo,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['todos'] })
+  })
+
+  // 4. Delete Todo
+  const deleteTodoMutation = useMutation({
+    mutationFn: deleteTodo,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['todos'] })
+  })
+
+  const handleAddTodo = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newTodo.trim()) return
+    addTodoMutation.mutate(newTodo)
+  }
+
+  if (isLoading) return <div>Loading your todos...</div>
+  if (isError) return <div>Error loading todos. Is your backend running?</div>
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '2rem' }}>
+      <h1>My Smart Todos</h1>
+
+      <form onSubmit={handleAddTodo} style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
+        <input
+          value={newTodo}
+          onChange={(e) => setNewTodo(e.target.value)}
+          placeholder="What needs to be done?"
+          style={{ flex: 1, padding: '8px' }}
+        />
+        <button type="submit" disabled={addTodoMutation.isPending}>
+          {addTodoMutation.isPending ? 'Adding...' : 'Add Todo'}
         </button>
-      </section>
+      </form>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {todos?.map(todo => (
+          <li key={todo._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #ccc' }}>
+            <span
+              onClick={() => toggleTodoMutation.mutate(todo)}
+              style={{
+                textDecoration: todo.completed === 'Yes' ? 'line-through' : 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {todo.text}
+            </span>
+            <button
+              onClick={() => deleteTodoMutation.mutate(todo._id)}
+              disabled={deleteTodoMutation.isPending}
+            >
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+      {todos?.length === 0 && <p>No todos yet!</p>}
+    </div>
   )
 }
 
